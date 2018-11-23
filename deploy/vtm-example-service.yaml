@@ -1,0 +1,100 @@
+# Copyright 2018 Pulse Secure, LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+# The following manifests override the empty ConfigMaps defined in
+# the vtm-foundation.yaml manifest and provides configuration to
+# the running traffic manager. Note that changes to ConfigMaps can
+# take up to a minute to appear in the container.
+#
+# The example here load-balances over a headless service named
+# 'example-application-backend-service' in the same namespace as the
+# traffic manager pod.
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vtm-config
+  labels:
+    app: vtm
+data:
+  my-service-config: |
+    version: 6.1
+
+    virtual_servers:
+    - name: example-service
+      properties:
+        basic:
+          enabled: true
+          port: 80
+          protocol: http
+          pool: example-pool
+          response_rules: [ Response-Headers ]
+
+    pools:
+    - name: example-pool
+      properties:
+        basic:
+          passive_monitoring: true
+          monitors: [ "Simple HTTP" ]
+          nodes_table: []
+          note: "Nodes automatically discovered from Kubernetes"
+          passive_monitoring: true
+
+        service_discovery:
+          enabled: true
+          plugin: "BuiltIn-DNS_Stateless"
+          plugin_args: "--servicename=_http._tcp.example-application-backend-service"
+
+    rules:
+    - name: Response-Headers
+      content:
+        valueFrom:
+          fileRef:
+            name: data/simple-rule
+
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vtm-extra-data
+  labels:
+    app: vtm
+data:
+  simple-rule: |
+    http.setResponseHeader( "X-Served-Via", sys.hostname() );
+    http.setResponseHeader( "X-Response-Time", stats.getServerResponseTime() );
+
+
+---
+# Service definition to expose the traffic manager's virtual server
+apiVersion: v1
+kind: Service
+metadata:
+  name: vtm-services
+  labels:
+    app: vtm
+spec:
+  type: NodePort
+  ports:
+  - name: example-application
+    targetPort: 80
+    protocol: TCP
+    port: 80
+
+  selector:
+    app: vtm
+
