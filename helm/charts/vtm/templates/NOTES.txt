@@ -1,0 +1,109 @@
+{{- /*
+# Copyright 2019 Pulse Secure, LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+*/ -}}
+{{- if ne (printf "%s" .Values.eula) "accept" }}
+########################################################
+####   ERROR: You have not agreed to the vTM EULA   ####
+########################################################
+
+The pod will not start until the EULA has been read and accepted.
+The EULA can be viewed at https://www.pulsesecure.net/support/eula/
+
+    helm upgrade {{ .Release.Name }} --set eula=accept pulsesecure-vadc/vtm
+{{- else -}}
+{{- $root := . -}}
+{{- if .Values.hostNetwork }}
+Access admin interfaces:
+   The vTM Web UI is available on TCP port {{ if .Values.adminService.webui }}{{ default 9090 .Values.adminService.webui.port }}{{ else }}9090{{ end }}
+   The vTM Rest API is available on TCP port {{ if .Values.adminService.restapi }}{{ default 9070 .Values.adminService.restapi.port }}{{ else }}9070{{ end }}
+{{- else }}
+Access admin interfaces through the {{ include "vtm.fullname" . }}-admin service:
+{{- if contains "NodePort" .Values.adminService.type }}
+{{- if (.Values.adminService.webui) and (not (empty .Values.adminService.webui.nodePort)) }}
+  export WEBUI_NODE_PORT={{ .Values.adminService.webui.nodePort }}
+{{- else }}
+  export WEBUI_NODE_PORT=$(kubectl --namespace {{ .Release.Namespace }} get services -o jsonpath="{.spec.ports[0].nodePort}" {{ template "vtm.fullname" . }}-admin)
+{{- end }}
+{{- if (.Values.adminService.restapi) and (not (empty .Values.adminService.restapi.nodePort)) }}
+  export RESTAPI_NODE_PORT={{ .Values.adminService.restapi.nodePort }}
+{{- else }}
+  export RESTAPI_NODE_PORT=$(kubectl --namespace {{ .Release.Namespace }} get services -o jsonpath="{.spec.ports[1].nodePort}" {{ template "vtm.fullname" . }}-admin)
+{{- end }}
+  export NODE_IP=$(kubectl --namespace {{ .Release.Namespace }} get nodes -o jsonpath="{.items[0].status.addresses[1].address}")
+
+  echo "Visit https://$NODE_IP:$WEBUI_NODE_PORT to access the vTM Web UI"
+  echo "Visit https://$NODE_IP:$RESTAPI_NODE_PORT to access the vTM Rest API"
+{{- else if contains "ClusterIP" .Values.adminService.type }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "vtm.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+
+  kubectl port-forward --namespace {{ .Release.Namespace }} $POD_NAME 9090:9090
+  echo "Visit https://127.0.0.1:9090 to access the vTM Web UI"
+
+  kubectl port-forward --namespace {{ .Release.Namespace }} $POD_NAME 9070:9070
+  echo "Visit https://127.0.0.1:9070 to access the vTM Rest API"
+{{- else if contains "LoadBalancer" .Values.adminService.type }}
+     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+           You can watch the status of by running 'kubectl get svc --namespace {{ .Release.Namespace }} -w {{ include "vtm.fullname" . }}-admin'
+{{- end }}
+{{- end }}
+
+
+View the logs to get the admin password:
+   kubectl logs --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "vtm.name" . }},app.kubernetes.io/instance={{ .Release.Name }}"
+
+
+Add service config to the {{ include "vtm.fullname" . }}-config-dynamic and {{ include "vtm.fullname" . }}-config-dynamic-data ConfigMaps.
+{{ if .Values.staticServices }}
+{{ $keys := keys .Values.staticServices | sortAlpha }}
+{{- range $index, $key := $keys }}
+{{- $value := index $root.Values.staticServices $key }}
+{{- $service := dict }}
+{{- if $value.frontend }}{{- $_ := set $service "type" (default "NodePort" $value.frontend.type) }}
+{{- else }}{{- $_ := set $service "type" "NodePort" }}{{- end -}}
+
+{{- if $root.Values.hostNetwork }}
+Access {{ $key }} though:
+   {{- $autoPort := add $root.Values.basePort $index }}
+   {{- $port := default $autoPort $value.port }}
+   {{- $vsProtocol := default "http" $value.virtualServerProtocol }}
+   {{- $protocol := include "vtm.vs.protocol" $vsProtocol }}
+   Service {{ $key }} is available on {{ $protocol }} port {{ $port }}
+{{- else }}
+Access {{ $key }} though the {{ include "vtm.fullname" $root }}-data-{{ $key }} service:
+
+{{- if contains "NodePort" $service.type }}
+  export NODE_IP=$(kubectl --namespace {{ $root.Release.Namespace }} get nodes -o jsonpath="{.items[0].status.addresses[1].address}")
+  export SERVICE_PORT=$(kubectl --namespace {{ $root.Release.Namespace }} get services -o jsonpath="{.spec.ports[0].nodePort}" {{ include "vtm.fullname" $root }}-data-{{ $key }})
+
+  echo "Use $NODE_IP:$SERVICE_PORT to access the {{ $key }} service"
+
+{{- else if contains "ClusterIP" $service.type }}
+{{- $autoPort := add $root.Values.basePort $index }}
+{{- $port := default $autoPort $value.port }}
+  export POD_NAME=$(kubectl get pods --namespace {{ $root.Release.Namespace }} -l "app.kubernetes.io/name={{ include "vtm.name" $root }},app.kubernetes.io/instance={{ $root.Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  kubectl port-forward --namespace {{ $root.Release.Namespace }} $POD_NAME {{ $port }}:{{ $port }}
+
+  echo "Use 127.0.0.1:{{ $port }} to access the {{ $key }} service"
+
+{{- else if contains "LoadBalancer" $service.type }}
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+        You can watch the status of by running 'kubectl get svc --namespace {{ $root.Release.Namespace }} -w {{ include "vtm.fullname" $root }}-data-{{ $key }}'
+
+{{- end }}
+{{- end }}
+
+{{ end -}}
+{{ end -}}
+{{ end -}}

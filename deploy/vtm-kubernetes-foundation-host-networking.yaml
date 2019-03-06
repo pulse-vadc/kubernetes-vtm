@@ -53,7 +53,7 @@ metadata:
     app: vtm
 data:
   config: |
-    version: 6.1
+    version: 6.2
 
     global_settings:
       properties:
@@ -72,7 +72,7 @@ metadata:
     app: vtm
 data:
   config: |
-    version: 6.1
+    version: 6.2
     virtual_servers:
     - name: healthcheck
       properties:
@@ -112,7 +112,7 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: vtm
-          image: pulsesecure/vtm:18.3
+          image: pulsesecure/vtm:19.1
           imagePullPolicy: Always
           ports:
           - name: vtm-webui
@@ -125,6 +125,7 @@ spec:
           securityContext:
             capabilities:
               add:
+                - SYS_RESOURCE
                 - NET_ADMIN
 
           livenessProbe:

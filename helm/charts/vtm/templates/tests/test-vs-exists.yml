@@ -1,0 +1,57 @@
+{{- /*
+# Copyright 2019 Pulse Secure, LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+*/ -}}
+{{- if not .Values.hostNetwork }}
+{{- if .Values.adminPassword }}
+
+{{- if .Values.staticServices }}
+{{- $root := . -}}
+{{- range $key, $value := .Values.staticServices }}
+{{- with $root }}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ .Release.Name }}-{{ $key }}-vs-exists"
+  annotations:
+    "helm.sh/hook": test-success
+    "helm.sh/hook-delete-policy": "hook-succeeded,before-hook-creation"
+spec:
+  containers:
+  - name: {{ .Release.Name }}-{{ $key }}-vs-exists
+    image: alpine
+    env:
+      - name: ZEUS_ADMIN_HOST
+        value: "{{ template "vtm.fullname" . }}-admin"
+      - name: ZEUS_REST_PORT
+        value: "{{ if .Values.adminService.restapi }}{{ default 9070 .Values.adminService.restapi.port }}{{ else }}9070{{ end }}"
+      - name: ZEUS_PASS
+        valueFrom:
+          secretKeyRef:
+            name: {{ include "vtm.fullname" . }}-admin-password
+            key: password
+      - name: ZEUS_API_VERSION
+        value: "{{ .Values.apiVersion }}"
+      - name: ZEUS_POOL
+        value: "{{ $key }}"
+    command: ["sh", "-c"]
+    args: ["wget --no-check-certificate --server-response --spider https://admin:\"${ZEUS_PASS}\"@${ZEUS_ADMIN_HOST}:${ZEUS_REST_PORT}/api/tm/${ZEUS_API_VERSION}/config/active/virtual_servers/${ZEUS_POOL}/"]
+  restartPolicy: Never
+{{ end }}
+{{ end }}
+{{ end }}
+{{ end }}
+
+{{- end }}

@@ -1,0 +1,73 @@
+{{- /*
+# Copyright 2019 Pulse Secure, LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+*/ -}}
+{{- if not .Values.hostNetwork }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "vtm.fullname" . }}-admin
+  {{- if .Values.adminService.annotations }}
+  annotations:
+    {{- toYaml .Values.adminService.annotations | nindent 4 }}
+  {{- end }}
+  labels:
+    app.kubernetes.io/name: {{ template "vtm.name" . }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  type: {{ .Values.adminService.type }}
+  {{- if .Values.adminService.clusterIP }}
+  clusterIP: "{{ .Values.adminService.clusterIP }}"
+  {{- end }}
+  {{- if .Values.adminService.externalIPs }}
+  externalIPs:
+    {{- toYaml .Values.adminService.externalIPs | nindent 4 }}
+  {{- end }}
+  {{- if .Values.adminService.loadBalancerIP }}
+  loadBalancerIP: "{{ .Values.adminService.loadBalancerIP }}"
+  {{- end }}
+  {{- if .Values.adminService.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml .Values.adminService.loadBalancerSourceRanges | nindent 4 }}
+  {{- end }}
+  ports:
+  - name: webui
+    targetPort: webui
+    protocol: TCP
+    {{- if .Values.adminService.webui }}
+    port: {{ .Values.adminService.webui.port | default 9090 }}
+    {{- if (and (eq .Values.adminService.type "NodePort") (not (empty .Values.adminService.webui.nodePort))) }}
+    nodePort: {{ .Values.adminService.webui.nodePort }}
+    {{- end }}
+    {{- else }}
+    port: 9090
+    {{- end }}
+  - name: restapi
+    targetPort: restapi
+    protocol: TCP
+    {{- if .Values.adminService.restapi }}
+    port: {{ .Values.adminService.restapi.port | default 9070 }}
+    {{- if (and (eq .Values.adminService.type "NodePort") (not (empty .Values.adminService.restapi.nodePort))) }}
+    nodePort: {{ .Values.adminService.restapi.nodePort }}
+    {{- end }}
+    {{- else }}
+    port: 9070
+    {{end}}
+  sessionAffinity: ClientIP
+  selector:
+    app.kubernetes.io/name: {{ template "vtm.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

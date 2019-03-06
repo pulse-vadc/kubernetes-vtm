@@ -31,7 +31,7 @@ metadata:
     app: vtm
 data:
   my-service-config: |
-    version: 6.1
+    version: 6.2
 
     virtual_servers:
     - name: example-service
@@ -51,7 +51,6 @@ data:
           monitors: [ "Simple HTTP" ]
           nodes_table: []
           note: "Nodes automatically discovered from Kubernetes"
-          passive_monitoring: true
 
         service_discovery:
           enabled: true

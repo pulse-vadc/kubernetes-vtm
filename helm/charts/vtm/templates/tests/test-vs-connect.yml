@@ -1,0 +1,54 @@
+{{- /*
+# Copyright 2019 Pulse Secure, LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+*/ -}}
+{{- if not .Values.hostNetwork }}
+
+{{- if .Values.staticServices }}
+{{- $root := . -}}
+{{- $keys := keys .Values.staticServices | sortAlpha }}
+{{- range $index, $key := $keys }}
+{{- $value := index $root.Values.staticServices $key }}
+{{- with $root }}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ .Release.Name }}-{{ $key }}-vs-connect"
+  annotations:
+    "helm.sh/hook": test-success
+    "helm.sh/hook-delete-policy": "hook-succeeded,before-hook-creation"
+spec:
+  containers:
+  - name: {{ .Release.Name }}-{{ $key }}-vs-connect
+    image: alpine
+    env:
+      - name: ZEUS_HOST
+        value: "{{ include "vtm.fullname" . }}-data-{{ $key }}"
+      {{- $autoPort := add $root.Values.basePort $index }}
+      {{- $port := default $autoPort $value.port }}
+      {{- $vsProtocol := default "http" $value.virtualServerProtocol }}
+      {{- $protocol := include "vtm.vs.protocol" $vsProtocol }}
+      - name: ZEUS_PORT
+        value: "{{ if $value.frontend }}{{ default $port $value.frontend.port }}{{ else }}{{ $port }}{{ end }}"
+      - name: ZEUS_FLAGS
+        value: "{{ if eq $protocol "UDP" }}-u{{ end }}"
+    command: ["sh", "-c"]
+    args: ["nc -v -z ${ZEUS_FLAGS} ${ZEUS_HOST} ${ZEUS_PORT}"]
+  restartPolicy: Never
+{{ end }}
+{{ end }}
+{{ end }}
+
+{{- end }}

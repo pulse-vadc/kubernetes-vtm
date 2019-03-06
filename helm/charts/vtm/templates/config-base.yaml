@@ -1,0 +1,57 @@
+{{- /*
+# Copyright 2019 Pulse Secure, LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+*/ -}}
+{{- $root := . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "vtm.fullname" . }}-config-base
+  labels:
+    app.kubernetes.io/name: {{ template "vtm.name" . }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  00-health-check: |
+    version: {{ .Values.apiVersion }}
+
+    virtual_servers:
+    - name: kubernetes_healthcheck
+      properties:
+        basic:
+          enabled: true
+          port: {{ $root.Values.healthcheckPort }}
+          protocol: http
+          pool: discard
+          request_rules: [ "internal_healthcheck" ]
+
+    rules:
+    - name: internal_healthcheck
+      content: http.sendResponse( '200 OK', 'text/plain', '', '');
+
+  00-kube-defaults: |
+    version: {{ .Values.apiVersion }}
+
+    global_settings:
+      properties:
+        java:
+          enabled: false
+
+        web_cache:
+          size: 0
+
+        fault_tolerance:
+          frontend_check_ips: []
+

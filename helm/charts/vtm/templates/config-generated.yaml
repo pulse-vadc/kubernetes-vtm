@@ -1,0 +1,133 @@
+{{- /*
+# Copyright 2019 Pulse Secure, LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+*/ -}}
+{{- $root := . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "vtm.fullname" . }}-config-generated
+  labels:
+    app.kubernetes.io/name: {{ template "vtm.name" . }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+{{- if .Values.selfRegistration }}
+  20-self-registration: |
+    version: {{ .Values.apiVersion }}
+
+    global_settings:
+      properties:
+        remote_licensing:
+          registration_server: {{ required "A valid self registration host is required (.Values.selfRegistration.registration_server)." .Values.selfRegistration.registration_server }}
+          {{- if .Values.selfRegistration.owner }}
+          owner: {{ .Values.selfRegistration.owner }}
+          {{- end }}
+          {{- if .Values.selfRegistration.owner_secret }}
+          owner_secret: {{ .Values.selfRegistration.owner_secret }}
+          {{- end }}
+          {{- if .Values.selfRegistration.policy_id }}
+          policy_id: {{ .Values.selfRegistration.policy_id }}
+          {{- end }}
+          {{- if .Values.selfRegistration.server_certificate }}
+          server_certificate: {{ .Values.selfRegistration.server_certificate }}
+          {{- end }}
+          {{- if (hasKey .Values.selfRegistration "comm_channel_enabled") }}
+          comm_channel_enabled: {{ .Values.selfRegistration.comm_channel_enabled }}
+          {{- end }}
+          {{- if .Values.selfRegistration.comm_channel_port }}
+          comm_channel_port: {{ .Values.selfRegistration.comm_channel_port }}
+          {{- end }}
+{{- end }}
+
+  40-config: |
+    version: {{ .Values.apiVersion }}
+    {{ if .Values.staticServices }}
+
+    {{- $tlsCerts := dict }}
+    {{- range $key, $value := .Values.staticServices }}
+    {{- if $value.tlsSecretName }}
+    {{- $_ := set $tlsCerts $value.tlsSecretName 1 }}
+    {{- end }}
+    {{- end }}
+    {{- if $tlsCerts }}
+    ssl:
+      server_keys:
+      {{- range $index, $value := keys $tlsCerts }}
+      - name: {{ tpl $value $root }}
+        properties:  
+          basic:
+            public:
+              valueFrom:
+                fileRef:
+                  name: data/tls/{{ tpl $value $root }}/tls.crt
+            private:
+              valueFrom:
+                fileRef:
+                  name: data/tls/{{ tpl $value $root }}/tls.key
+      {{- end }}
+    {{- end }}
+
+    virtual_servers:
+    {{- $keys := keys .Values.staticServices | sortAlpha }}
+    {{- range $index, $key := $keys }}
+    {{- $value := index $root.Values.staticServices $key }}
+    {{- $autoPort := add $root.Values.basePort $index }}
+    {{- $port := default $autoPort $value.port }}
+    - name: {{ $key }}
+      properties:
+        basic:
+          enabled: true
+          port: {{ $port }}
+          protocol: {{ default "http" $value.virtualServerProtocol }}
+          pool: {{ if $value.backend -}}{{ $value.backend }}{{- else -}} discard {{- end }}
+        {{- if $value.tlsSecretName }}
+          ssl_decrypt: true
+        ssl:  
+          server_cert_default: {{ tpl $value.tlsSecretName $root }}
+        {{- end }}
+    {{- end }}
+
+    {{- end }}{{- /* staticServices */ -}}
+
+    {{- if .Values.pools }}
+
+    pools:
+    {{- range $key, $value := .Values.pools }}
+    - name: {{ $key }}
+      properties:
+        basic:
+          monitors: {{ if not $value.monitors }}[]{{ else }}
+          {{ toYaml $value.monitors | nindent 10 }}
+          {{- end }}
+          nodes_table: []
+          passive_monitoring: true
+        service_discovery:
+          enabled: true
+          plugin: "BuiltIn-DNS_Stateless"
+          plugin_args: "--{{ if $value.port }}hostname{{ else }}servicename{{ end }}={{ if $value.portName }}_{{ $value.portName }}._{{ default "tcp" $value.portProtocol }}.{{ else if $value.portProtocol }}_{{ $value.portProtocol }}.{{ end }}{{ tpl $value.serviceName $root }}{{ if $value.serviceNamespace }}.{{ $value.serviceNamespace }}.svc.cluster.local{{ end }}{{ if $value.port }} --port {{ $value.port }}{{ end }}"
+        
+        {{- if $value.tls }}
+        {{- if eq $value.tls true }}
+        ssl:
+          enable: true
+        {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+{{ if .Values.vtmConfig }}
+  50-vtm-config: |
+{{ .Values.vtmConfig | indent 4 }}
+{{ end }}

@@ -1,0 +1,206 @@
+{{- /*
+# Copyright 2019 Pulse Secure, LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+*/ -}}
+{{- $root := . -}}
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: {{ include "vtm.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ template "vtm.name" . }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ template "vtm.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ template "vtm.name" . }}
+        helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecrets }}
+      {{- end }}
+      {{- if .Values.hostNetwork }}
+      {{- if eq .Values.hostNetwork true }}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- end }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.vtmImage.repository }}:{{ .Values.vtmImage.tag }}"
+          imagePullPolicy: {{ .Values.vtmImage.pullPolicy }}
+          ports:
+            - name: webui
+              containerPort: 9090
+              protocol: TCP
+            - name: restapi
+              containerPort: 9070
+              protocol: TCP
+
+          securityContext:
+            capabilities:
+              add:
+                - SYS_RESOURCE
+          {{ if .Values.hostNetwork }}
+          {{- if eq .Values.hostNetwork true }}
+                - NET_ADMIN
+          {{- end }}
+          {{- end }}
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.healthcheckPort }}
+              scheme: HTTP
+            failureThreshold: 10
+            successThreshold: 1
+            periodSeconds: 5
+            timeoutSeconds: 5
+            initialDelaySeconds: {{ default 30 .Values.healthcheckInitialDelay }}
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.healthcheckPort }}
+              scheme: HTTP
+            failureThreshold: 2
+            successThreshold: 1
+            periodSeconds: 5
+            timeoutSeconds: 1
+
+          env:
+            - name: ZEUS_EULA
+              value: {{ required "EULA must be accepted by setting eula=accept" .Values.eula | quote }}
+            - name: ZEUS_COMMUNITY_EDITION
+              value: "yes"
+            {{- if .Values.adminPassword }}
+            - name: ZEUS_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vtm.fullname" . }}-admin-password
+                  key: password
+            {{- end }}
+            - name: ZEUS_BASE_CONFIG
+              value: "/base"
+            - name: ZEUS_WATCHED_CONFIG
+              value: "/import"
+            - name: ZEUS_CONFIG_IMPORT_ARGS
+              value: --no-replicate
+
+          volumeMounts:
+          - name: base-config-volume
+            mountPath: /base/config
+          - name: service-config-volume
+            mountPath: /import/config
+          - name: service-data-volume
+            mountPath: /import/data
+
+          terminationMessagePolicy: FallbackToLogsOnError
+
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+      # Built-in configuration shipped with the Helm chart
+      - name: base-config-volume
+        projected:
+          sources:
+          - configMap:
+              name: {{ include "vtm.fullname" . }}-config-base
+
+      # Volume for storing configuration documents
+      - name: service-config-volume
+        projected:
+          sources:
+          - configMap:
+              name: {{ include "vtm.fullname" . }}-config-generated
+          - configMap:
+              name: {{ include "vtm.fullname" . }}-config-dynamic
+          # Additional config supplied in the Values file
+          {{- if .Values.serviceConfigMounts }}
+          {{- range $index, $value := .Values.serviceConfigMounts}}
+          - {{ default "configMap" $value.type }}:
+              name: {{ tpl $value.name $root }}
+              {{- if $value.items }}
+              items:
+              {{- range $itemindex, $itemvalue := $value.items }}
+              - key: {{ $itemvalue.key }}
+                path: {{ tpl (default $itemvalue.key $itemvalue.path) $root }}
+              {{- end }}
+              {{- end }}
+          {{- end }}
+          {{- end}}
+
+      # Volume for storing extra data referenced by configuration documents
+      - name: service-data-volume
+        projected:
+          sources:
+          - configMap:
+              name: {{ include "vtm.fullname" . }}-config-dynamic-data
+
+          # Additional data supplied in the Values file
+          {{- if .Values.serviceDataMounts }}
+          {{- range $index, $value := .Values.serviceDataMounts }}
+          - {{ default "configMap" $value.type }}:
+              name: {{ tpl $value.name $root }}
+              {{- if $value.items }}
+              items:
+              {{- range $itemindex, $itemvalue := $value.items }}
+              - key: {{ $itemvalue.key }}
+                path: {{ tpl (default $itemvalue.key $itemvalue.path) $root }}
+              {{- end }}
+              {{- end }}
+          {{- end }}
+          {{- end }}
+
+          {{- if .Values.staticServices}}
+          {{- $tlsList := dict }}
+          {{- range $key, $value := .Values.staticServices }}
+          {{- if $value.tlsSecretName }}
+          {{- if not (hasKey $tlsList $value.tlsSecretName) }}
+          {{- $_ := set $tlsList $value.tlsSecretName 1 }}
+          - secret:
+              name: {{ tpl $value.tlsSecretName $root }}
+              items:
+              - key: tls.crt
+                path: tls/{{ tpl $value.tlsSecretName $root }}/tls.crt
+              - key: tls.key
+                path: tls/{{ tpl $value.tlsSecretName $root }}/tls.key
+          {{- end }}
+          {{- end }}
+          {{- end }}
+          {{- end }}
+
+    {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}

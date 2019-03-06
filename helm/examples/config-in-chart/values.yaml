@@ -1,0 +1,51 @@
+# Copyright 2019 Pulse Secure, LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+# Create a virtual server for the application
+staticServices:
+  my-application:
+    # The application is HTTP-based
+    virtualServerProtocol: http
+    # Expose the virtual server through a NodePort service
+    frontend:
+      type: NodePort
+      port: 443
+      nodePort: 30080
+    # The server will load-balance over the endpoints in the pool
+    # defined below
+    backend: my-application-pool
+
+# Define the endpoints over which to load-balance
+pools:
+  my-application-pool:
+    # Discover the endpoints from the 'my-application-lb-service' service
+    serviceName: my-application-lb-service
+    # The port defined in the above service over which we are load-balancing
+    portName: http
+    # Monitor the pods with HTTP requests
+    monitors: [ "Simple HTTP" ]
+
+# Augment the virtual server defined above with a TrafficScript rule
+vtmConfig: |
+  rules:
+  - content: |
+      http.setResponseHeader("X-Powered-By", "Pulse Secure vTM deployed by Helm");
+    name: Powered-By
+  virtual_servers:
+  - name: my-application
+    properties:
+      basic:
+        response_rules:
+        - Powered-By

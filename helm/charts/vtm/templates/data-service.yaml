@@ -1,0 +1,85 @@
+{{- /*
+# Copyright 2019 Pulse Secure, LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+*/ -}}
+{{- if not .Values.hostNetwork }}
+
+{{ if .Values.staticServices }}
+{{- $root := . -}}
+
+{{- $keys := keys .Values.staticServices | sortAlpha }}
+{{- range $index, $key := $keys }}
+{{- $value := index $root.Values.staticServices $key }}
+{{- with $root }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "vtm.fullname" . }}-data-{{ $key }}
+  {{- if $value.frontend }}
+  {{- if $value.frontend.annotations }}
+  annotations:
+    {{- toYaml $value.frontend.annotations | nindent 4 }}
+  {{- end }}
+  {{- end }}
+  labels:
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    app: "{{ include "vtm.name" . }}"
+    heritage: "{{ .Release.Service }}"
+    release: "{{ .Release.Name }}"
+    component: "{{ .Values.name }}"
+spec:
+  {{- if $value.frontend }}
+  type: {{ default "NodePort" $value.frontend.type }}
+  {{- if $value.frontend.clusterIP }}
+  clusterIP: "{{ $value.frontend.clusterIP }}"
+  {{- end }}
+  {{- if $value.frontend.externalIPs }}
+  externalIPs:
+    {{- toYaml $value.frontend.externalIPs | nindent 4 }}
+  {{- end }}
+  {{- if $value.frontend.loadBalancerIP }}
+  loadBalancerIP: "{{ $value.frontend.loadBalancerIP }}"
+  {{- end }}
+  {{- if $value.frontend.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml $value.frontend.loadBalancerSourceRanges | nindent 4 }}
+  {{- end }}
+  {{- else }}
+  type: "NodePort"
+  {{- end }}
+  ports:
+      {{- $autoPort := add $root.Values.basePort $index }}
+      {{- $port := default $autoPort $value.port }}
+      {{- $vsProtocol := default "http" $value.virtualServerProtocol }}
+      {{- $protocol := include "vtm.vs.protocol" $vsProtocol }}
+    - targetPort: {{ $port }}
+      {{- if $value.frontend }}
+      port: {{ default $port $value.frontend.port }}
+      protocol: {{ default $protocol $value.frontend.protocol | upper }}
+      {{- if (not (empty $value.frontend.nodePort)) }}
+      nodePort: {{ $value.frontend.nodePort }}
+      {{- end }}
+      {{- else }}
+      port: {{ $port }}
+      protocol: {{ $protocol }}
+      {{- end }}
+  selector:
+    app.kubernetes.io/name: {{ template "vtm.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- end }}

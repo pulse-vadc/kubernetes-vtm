@@ -1,0 +1,178 @@
+# Copyright 2019 Pulse Secure, LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Default values for vtm.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Component name
+name: vtm
+
+# Which vTM image to run
+vtmImage:
+  repository: pulsesecure/vtm
+  tag: 19.1
+  pullPolicy: IfNotPresent
+
+# Credentials for pulling the vTM image
+#imagePullSecrets: myregistrykey
+
+# Accept EULA, eula must be set to "accept" otherwise the pod will not start.
+# The EULA can be viewed at https://www.pulsesecure.net/support/eula/
+#eula: accept
+
+# API Version number - should match the latest API version in the vTM image
+apiVersion: 6.2
+
+# Password for the traffic manager admin user
+#adminPassword: <password>
+
+ # Number of vTM instances to run
+replicaCount: 1
+
+# Use host networking mode for the vTM
+#hostNetwork: true
+
+# Services Director Self Registration
+#selfRegistration:
+#  registration_server:
+#  server_certificate:
+#  policy_id:
+#  owner:
+#  owner_secret:
+#  comm_channel_enabled:
+#  comm_channel_port:
+
+# Service resource created to access the Web UI and Rest API of the vTM
+adminService:
+  type: NodePort
+#  annotations: {}
+#  clusterIP: ""
+#  externalIPs: []
+#  loadBalancerIP: ""
+#  loadBalancerSourceRanges: []
+#  webui:
+#    port: 9090
+#    nodePort: 30090
+#  restapi:
+#    port: 9070
+#    nodePort: 30070
+
+# Services to host on the traffic manager
+# Each entry will create a virtual server configuration on the vTM
+#staticServices:
+#  website:   # The name of the service - can be used to add additional config later
+#    # Specify the type of virtual server to configure. This setting is optional
+#    # and defaults to http.
+#    virtualServerProtocol: http
+#    # Name of the tls secret to use for the virtual server. Optional.
+#    tlsSecretName: website-tls-secret
+#    # Port to use in the vTM configuration. This is optional, if undefined it will
+#    # be auto assigned using basePort.
+#    port: 4443
+#    frontend:   # Details of the Service resource used to access the app
+#      type: NodePort
+#      port: 443
+#      nodePort: 30088
+#    # Name of default pool
+#    backend: webserver
+#
+#  messagequeue:
+#    virtualServerProtocol: udp
+#    frontend:
+#      type: ClusterIP
+#    backend: broker
+
+# Details of the application pool
+# Each entry will create a pool configuration on the vTM
+#pools:
+#  webserver:
+#    # Service and port values are used to perform service discovery using
+#    # the DNS service in Kubernetes.
+#    # Name of the service that exposes the application pods
+#    serviceName: "webserver"
+#    # Namespace of the service
+#    serviceNamespace: "mywww"
+#    # Protocol type
+#    portProtocol: "tcp"
+#    # Name of port as defined in its service definition
+#    portName: "http"
+#    # If a port is specified, nodes will be discovered using a standard
+#    # DNS query for the serviceName and will use the specified port. If
+#    # a port is not specified, vTM will request a DNS SRV record for the
+#    # serviceName to discover the node endpoints.
+#    port: 443
+#    # Do tls to the backend pods
+#    tls: true
+#    # List of monitors to use for health check. Common values are "Simple HTTP"
+#    # and "Ping"
+#    monitors: [ "Simple HTTP" ]
+#
+#  broker:
+#    serviceName: "mqbroker"  # Name of the service that exposes the application pods
+
+# vTM configuration to apply in config document format
+#vtmConfig: |
+#  global_settings:
+#    properties:
+#      web_cache:
+#        size: "10%"
+
+# Additional ConfigMaps and Secrets containing configuration or data to load
+# Service config mounts will be mapped into /import/config/
+#serviceConfigMounts:
+#- name: "additional-config"
+#  type: configMap
+#- name: "trafficscript-library"
+#  type: configMap
+#  items:
+#  - key: rest-redirect
+
+# Service data mounts will be mapped into /import/data/
+#serviceDataMounts:
+#- name: "additional-data"
+#  type: configMap
+#- name: "service-password"
+#  type: secret
+#  items:
+#  - key: password-1234
+#    path: auth-password
+
+# Port to listen on for the health check performed by Kubernetes
+healthcheckPort: 19999
+# Delay in seconds before starting the health check
+healthcheckInitialDelay: 30
+
+# Base port for automatic port assignment on virtual servers
+basePort: 20000
+
+# Additional settings to apply to the vTM deployment.
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #  cpu: 100m
+  #  memory: 1024Mi
+  # requests:
+  #  cpu: 100m
+  #  memory: 512Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
