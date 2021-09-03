@@ -131,7 +131,7 @@ spec:
     spec:
       containers:
         - name: vtm
-          image: pulsesecure/vtm:19.1
+          image: pulsesecure/vtm:latest
           imagePullPolicy: Always
           ports:
           - name: vtm-webui
