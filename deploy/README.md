@@ -182,7 +182,14 @@ $ kubectl logs pod/$(kubectl get pods -l "app=vtm" -o jsonpath="{.items[0].metad
 
 INFO: Generated random password for vTM: <password>
 ```
-To set a pre-defined password when deploying a pod, add the ZEUS_PASS environment variable to the pod specification. If necessary, the password can be retrieved from a Secret object as follows:
+To set a pre-defined password when deploying a pod, add the ZEUS_PASS environment variable to the pod specification. If necessary, the password can be set and retrieved from a Secret object as follows:
+
+To set:
+---bash
+$ kubectl create secret generic vtm-admin-login-credentials --from-literal=vtm-admin-password={SET PASSWORD HERE}
+---
+
+To retrieve:
 ```
 env:
 - name: ZEUS_PASS
